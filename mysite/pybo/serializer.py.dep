@@ -1,0 +1,15 @@
+# JWT의 범위를 지정
+
+from rest_framework import serializers
+from .models import Question, Answer
+
+class QuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Question
+        fields = ('id', 'author', 'subject', 'content', 'create_date', 'modify_date', 'voter')
+
+class AnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Answer
+        fields = ('id', 'author', 'question', 'content', 'create_date', 'modify_date', 'voter')
+
