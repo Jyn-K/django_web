@@ -46,6 +46,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
                     sh """
+                        rm -rf django-k8s-manifests
                         git clone https://${TOKEN}@github.com/Jyn-K/django-k8s-manifests
                         cd django-k8s-manifests
                         sed -i 's|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${IMAGE_TAG}|' django-deployment.yaml
