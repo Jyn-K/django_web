@@ -1,71 +1,58 @@
 pipeline {
     agent any
-    
     environment {
         DOCKER_IMAGE = "y30308/django-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        GIT_CREDENTIALS = credentials('github-credentials')
-        MANIFEST_REPO = "https://github.com/Jyn-K/django-k8s-manifests.git"
     }
-    
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-        
         stage('Test') {
+            agent {
+                docker {
+                    image 'python:3.9'
+                }
+            }
             steps {
                 sh '''
-                    python -m venv venv
-                    . venv/bin/activate
                     pip install -r requirements.txt
                     python manage.py test
                 '''
             }
         }
-        
-        stage('Build Docker Image') {
+        stage('Setup Buildx') {
             steps {
                 sh '''
-                    docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
-                    docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                    docker buildx create --use --name mybuilder || docker buildx use mybuilder
+                    docker buildx inspect --bootstrap
                 '''
             }
         }
-        
-        stage('Push to Docker Hub') {
+        stage('Build & Push') {
             steps {
-                sh '''
-                    echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
-                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
-                    docker push ${DOCKER_IMAGE}:latest
-                '''
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh '''
+                        echo $PASS | docker login -u $USER --password-stdin
+                        docker buildx build --platform linux/amd64,linux/arm64 \
+                            -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                            -t ${DOCKER_IMAGE}:latest \
+                            --push .
+                    '''
+                }
             }
         }
-        
-        stage('Update Kubernetes Manifest') {
+        stage('Update Manifest') {
             steps {
-                sh '''
-                    rm -rf manifest-repo
-                    git clone ${MANIFEST_REPO} manifest-repo
-                    cd manifest-repo
-                    sed -i "s|image:.*django-app.*|image: ${DOCKER_IMAGE}:${IMAGE_TAG}|g" django-deployment.yaml
-                    git config user.email "jenkins@example.com"
-                    git config user.name "Jenkins"
-                    git add django-deployment.yaml
-                    git commit -m "Update image to ${IMAGE_TAG}"
-                    git push https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/Jyn-K/django-k8s-manifests.git main
-                '''
+                withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
+                    sh """
+                        git clone https://${TOKEN}@github.com/Jyn-K/django-k8s-manifests
+                        cd django-k8s-manifests
+                        sed -i 's|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${IMAGE_TAG}|' django-deployment.yaml
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins"
+                        git commit -am 'Update image to ${IMAGE_TAG}'
+                        git push
+                    """
+                }
             }
-        }
-    }
-    
-    post {
-        always {
-            sh 'docker logout'
         }
     }
 }
