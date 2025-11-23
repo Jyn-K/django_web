@@ -51,12 +51,17 @@ def index(request):
         'page_range': page_range, 
         'page': page, 
         'kw': kw,
-        'so': so
+        'so': so,
+        'hostname': socket.gethostname()  # 추가
+
     }
 
     return render(request, 'pybo/question_list.html', context)
 
 def detail(request, question_id):
     question = get_object_or_404(Question, pk=question_id)
-    context = {'question': question}
+    context = {
+            'question': question,
+            'hostname': socket.gethostname()
+    }
     return render(request, 'pybo/question_detail.html', context)
